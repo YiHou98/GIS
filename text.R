@@ -9,3 +9,5 @@ B <- 2
 C <- A+B
 C
 reprex()
+z < 5+5
+
