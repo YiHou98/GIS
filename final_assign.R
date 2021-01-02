@@ -377,4 +377,8 @@ lockdowndata <- lockdowndata%>%
   group_by(RGN19NM,date)%>%
   summarise(averetail = mean(retail_and_recreation_percent_change_from_baseline),avegrocery=mean(grocery_and_pharmacy_percent_change_from_baseline),avetransit=mean(transit_stations_percent_change_from_baseline),averesid=mean(residential_percent_change_from_baseline),averwork=mean(workplaces_percent_change_from_baseline))
 ## plot 4 plots of Sep Oct Nov of each region's covid cases, death cases,new cases. I think different regions have different peaks. For example, London has highest cases in Dec
+##from this plot, we can see the absolute number of regions, while the heatmap can tell us the peak of each region
+## plot the new cases before lockdown, during lockdown and after lockdown by MAP AND frequency plot
+
+##plot the mobility before and after lockdown'
 
