@@ -11,6 +11,7 @@ library(hrbrthemes)
 library(viridis)
 library(plotly)
 library(ggplot2)
+library(plyr)
 library(dplyr)
 library(lubridate)
 library(ggpubr)
@@ -18,7 +19,10 @@ library(janitor)
 library(fs)
 library(xtable)
 library(Matrix)
+library(dplyr)
 library(reshape)
+library(RColorBrewer)
+library(lubridate)
 coviddata <- read.csv('utla_covid.csv')
 coviddata$date <- as.Date(coviddata$date)
 data <- coviddata%>%
@@ -71,12 +75,12 @@ qtm(UTLAMap, fill = 'cumCasesBySpecimenDate')
 
 qtm(UTLALondon, fill = 'cumCasesBySpecimenDate')
 
-## Figure1
+
 plot(LWard_nb, st_geometry(coordsW), col="red")
 
 Lward.queens_weight <- LWard_nb %>%
   nb2listw(., style="C")
-W <- nb2listw(LWard_nb1, glist = NULL, style = "C",zero.policy=TRUE)
+Z <- listw2mat(Lward.queens_weight)
 
 Lward.knn_4_weight <- LWard_knn %>%
   nb2listw(., style="C")
@@ -107,36 +111,35 @@ heatmapdata <-ddply(data, c("date","areaCode"),summarize,.())
 
 lims=c(as.Date('2020-09-01'),as.Date('2020-12-28'))
 plotlist=list()
+
+plotlist=list()
 for (i in 1:9){
-   gg<- ggplot(filter(heatdata,RGN19NM == Region[i]), aes(date, areaName,fill=norm)) + geom_tile(aes(fill=norm))  + scale_fill_distiller(palette = "Spectral") +  scale_x_date(limits=lims,breaks =as.Date(c("2020-09-15","2020-10-15","2020-11-15","2020-12-15")),date_labels = "%b") +labs(x =NULL, y = NULL,title=sprintf("%s",Region[i]))+
-     coord_fixed(ratio=5,expand = TRUE)+
-     theme(axis.ticks=element_blank())+
-     theme(axis.text.y=element_text(size=6,hjust=1))+
-     theme(axis.text.x = element_text(size=6))+
-     theme(panel.border = element_blank())+
-     theme(plot.title=element_text(hjust =0,size=12))+
-     theme(legend.title = element_blank())+
-     theme(legend.title.align=1)+
-     theme(legend.text=element_text(size=6))+
-     theme(legend.position = 'bottom')+
-     theme(legend.key.size=unit(0.2,'cm'))+
-     theme(legend.key.width=unit(1,"cm"))
+  gg<- ggplot(filter(heatdata,RGN19NM == Region[i]), aes(date, areaName,fill=norm)) + geom_tile(aes(fill=norm))  + scale_fill_distiller(palette = "Spectral") +  scale_x_date(limits=lims,breaks =as.Date(c("2020-09-15","2020-10-15","2020-11-15","2020-12-15")),date_labels = "%b") +labs(x =NULL, y = NULL,title=sprintf("%s",Region[i]))+
+    coord_fixed(ratio=5,expand = TRUE)+
+    theme(axis.ticks=element_blank())+
+    theme(axis.text.y=element_text(size=9,hjust=1))+
+    theme(axis.text.x = element_text(size=9))+
+    theme(panel.border = element_blank())+
+    theme(plot.title=element_text(hjust =0,size=15))+
+    theme(legend.title = element_blank())+
+    theme(legend.title.align=1)+
+    theme(legend.text=element_text(size=9))+
+    theme(legend.position = 'bottom')+
+    theme(legend.key.size=unit(0.2,'cm'))+
+    theme(legend.key.width=unit(1,"cm"))
   plotlist[[i]] = gg
 }
-ggarrange(plotlist = plotlist,ncol=3,nrow=3)%>%
-  ggexport(filename='final_1228_england.pdf',height =15,width=15)
 
+ggarrange(plotlist = plotlist,ncol=3,nrow=3)%>%
+  ggexport(filename='final_1228_england2.pdf',height =15,width=15)
 normalize <- function(x){
   return((x-min(x)) / (max(x)-min(x)))
-}
-standard <- function(x){
-  return(sqrt(sum((x-mean(x))^2/(length(x)-1))))
 }
 
 baselinedata <- heatdata%>%
   filter(`date` == as.Date('2020-09-01'))
 baselinedata <-baselinedata%>%
-  rename(
+  dplyr::rename(
     cumCasesBySpecimenDate_base = cumCasesBySpecimenDate,
     cumDeathsByDeathDate_base=cumDeathsByDeathDate,
     cumDeathsByPublishDate_base = cumDeathsByPublishDate,
@@ -144,17 +147,13 @@ baselinedata <-baselinedata%>%
   )
 
 
-####woc please don't load plyr after dplyr
+
 ## the relation between new cases and mobility--spatial autogression model
-
-
 nlspd = mobilty_covid%>%
   select(areaCode,date,newCasesByPublishDate,newCasesByPublishDateChangePercentage,retail_and_recreation_percent_change_from_baseline,transit_stations_percent_change_from_baseline,workplaces_percent_change_from_baseline,residential_percent_change_from_baseline,parks_percent_change_from_baseline,grocery_and_pharmacy_percent_change_from_baseline,RGN19NM)
 #since there are many null values for mobility data before 0918,we will set the start data as 0918
 nlspd <- nlspd%>%
   filter(date >='2020-09-18'& date <= '2020-12-27')
-#we will see how many 
-sapply(nlspd,function(x)sum(is.na(x)))
 ## As we mentioned before, we will remove 17&46
 nlspd <- nlspd%>%
   filter(!areaCode=='E06000017')%>%
@@ -163,7 +162,7 @@ nlspd <- nlspd%>%
 sapply(nlspd,function(x)sum(is.na(x)))
 # we find that residential percent has about 71 null values while the parks has 1292 null values, so we will remove parks percent change from our independent variables.
 nlspd[is.na(nlspd)] <- 0
-Z[is.na(Z)] <- 0
+
 #change names of Z 
 name =baselinedata['areaCode']
 name <- name%>%
@@ -173,107 +172,176 @@ name <- name%>%
 colnames(Z) <- c(name$areaCode)
 rownames(Z) <-c(name$areaCode)
 
-## the two standard specifications (SEM and SAR) one with FE
-## and the other with RE:
-## fixed effects panel with spatial errors
 
+## spatial panel model
 
-nlspd4 <- nlspd%>%
+modeldata <- nlspd%>%
   mutate(area = as.factor(nlspd$RGN19NM))
-summary(nlspd4)
 
+modeldata <-modeldata%>%
+  dplyr::rename(
+    retail_recreation = retail_and_recreation_percent_change_from_baseline,
+    transit_stations=transit_stations_percent_change_from_baseline,
+    workplaces = workplaces_percent_change_from_baseline,
+    residential = residential_percent_change_from_baseline,
+    grocery_pharmacy = grocery_and_pharmacy_percent_change_from_baseline
+  )
+modeldata$area = as.factor(modeldata$area)
 
-##model1:fixed model 
-fm <- newCasesByPublishDate ~ retail_and_recreation_percent_change_from_baseline + transit_stations_percent_change_from_baseline + workplaces_percent_change_from_baseline+residential_percent_change_from_baseline+area-1
-SARmodel3 <- spml(fm, data=nlspd4,listw=mat2listw(Z), model ='random',lag=TRUE,spatial.error="none")
-fm_fixed <- newCasesByPublishDate ~ retail_and_recreation_percent_change_from_baseline + transit_stations_percent_change_from_baseline + workplaces_percent_change_from_baseline+residential_percent_change_from_baseline
-SARmodel_fixed <- spml(fm_fixed, data=nlspd4,listw=mat2listw(Z), model ='within',lag=TRUE,spatial.error="none")
-SARmodel_fixed1 <- spml(fm_fixed, data=nlspd4,listw=mat2listw(Z2), model ='within',lag=TRUE,spatial.error="b")
+summary(modeldata)
+new_cases <- scale(modeldata$newCasesByPublishDate)
+modeldata <- modeldata%>%
+  mutate(new_cases = new_cases)
+
+##model1:random model 
+fm_fixed_norm<- new_cases ~ retail_recreation + transit_stations + workplaces+grocery_pharmacy +residential
+SARmodel_fixed_norm<- spml(fm_fixed_norm, data=modeldata,listw=mat2listw(Z), model ='random',lag=TRUE,spatial.error="none")
 ##model2: fixed model:use new cases rate as the dependent variable
-fm_fixed_rate <- newCasesByPublishDateChangePercentage ~ retail_and_recreation_percent_change_from_baseline + transit_stations_percent_change_from_baseline + workplaces_percent_change_from_baseline+residential_percent_change_from_baseline+grocery_and_pharmacy_percent_change_from_baseline
-SARmodel_fixed_rate <- spml(fm_fixed_rate, data=nlspd4,listw=mat2listw(Z), model ='within',lag=TRUE,spatial.error="b")
-SARmodel_random_rate <- spml(fm_fixed_rate, data=nlspd4,listw=mat2listw(Z), model ='random',lag=TRUE,spatial.error="none")
 
-summary(SARmodel3)
-summary(SARmodel_fixed1)
+fm_fixed_rate <- newCasesByPublishDateChangePercentage ~ retail_recreation + transit_stations + workplaces+grocery_pharmacy +residential
+SARmodel_fixed_rate <- spml(fm_fixed_rate, data=modeldata,listw=mat2listw(Z), model ='within',lag=FALSE,spatial.error="b")
+
+summary(SARmodel_fixed_norm)
 summary(SARmodel_fixed_rate)
-summary(SARmodel_random_rate)
+##Hausman test
+print(hausman_panel<-phtest(fm_fixed_norm, data=modeldata))
+print(hausman_panel<-phtest(fm_fixed_rate, data=modeldata))
+##Hausman spatial test
+print(spat_hausman_ML_SEM<-sphtest(fm_fixed_rate, data=modeldata,listw=mat2listw(Z), spatial.model = "error", method="ML"))
+print(spat_hausman_ML_SAR<-sphtest(fm_fixed_rate, data=modeldata,listw=mat2listw(Z),spatial.model = "lag", method="ML"))
+print(spat_hausman_ML_SEM<-sphtest(fm_fixed_norm, data=modeldata,listw=mat2listw(Z), spatial.model = "error", method="ML"))
+print(spat_hausman_ML_SAR<-sphtest(fm_fixed_norm, data=modeldata,listw=mat2listw(Z),spatial.model = "lag", method="ML"))
+## robust LM test
+slmtest(fm_fixed_rate, data=modeldata,listw=mat2listw(Z), test="lml",model="within")
+slmtest(fm_fixed_rate, data=modeldata,listw=mat2listw(Z), test="lme",model="within")
+slmtest(fm_fixed_rate, data=modeldata,listw=mat2listw(Z), test="rlml",model="within")
+slmtest(fm_fixed_rate, data=modeldata,listw=mat2listw(Z), test="rlme",model="within")
+slmtest(fm_fixed_norm, data=modeldata,listw=mat2listw(Z), test="lml",model="random")
+slmtest(fm_fixed_norm, data=modeldata,listw=mat2listw(Z), test="lme",model="random")
+slmtest(fm_fixed_norm, data=modeldata,listw=mat2listw(Z), test="rlml",model="random")
+slmtest(fm_fixed_norm, data=modeldata,listw=mat2listw(Z), test="rlme",model="random")
 
-##From the result of spatial panel model, we can see all kinds of mobility are significant.
 
-## Next part we will focus on the effects of lockdown. The above findings suggest that mobility trends can really affect the new covid cases.
-## This motivates us to study if lockdown can really help decrease new cases.
-# 2.1 This part we will remove rustland since the absence of data. 
-## during this period, people will decrease time for recreation, and time in residence will increase
+## Regional differences of COVID-19 trends and mobility patterns
+## This part we will remove rustland since the absence of data. 
 lockdowncoviddata <- mobilty_covid%>%
   filter(date >='2020-09-01'& date <= '2020-12-28')%>%
   filter(!areaCode=='E06000017')%>%
   group_by(RGN19NM,date)%>%
   summarise(cumCases = sum(cumCasesBySpecimenDate),newCases = sum(newCasesByPublishDate))
-library(RColorBrewer)
-ggplot(lockdowncoviddata,aes( x= date, y = newCases))+
-  geom_line(aes(color = RGN19NM),size =1)+
-  scale_color_manual(values = c('#a6cee3',
-    '#1f78b4',
-    '#b2df8a',
-    '#33a02c',
-    '#fb9a99',
-    '#e31a1c',
-    '#fdbf6f',
-    '#ff7f00',
-    '#cab2d6'))+
-  theme_minimal()
-ggplot(lockdowncoviddata,aes( x= date, y = newCases))+
-  geom_line(aes(color = RGN19NM),size =0.8)+
-  scale_color_manual(values = c("#bea33c",
-                                "#5c388b",
-                                "#6ca24d",
-                                "#ca74c6",
-                                "#46c19a",
-                                "#b2457c",
-                                "#b86838",
-                                "#6d80d8",
-                                "#b8444e"))+
-  theme_minimal()
 
-ggplot(lockdowncoviddata,aes( x= date, y = newCases))+
-  geom_line(aes(color = RGN19NM),size =0.8)+
-  scale_color_manual(values = c("#ca586e",
-                                "#4aab83",
-                                "#c74fb1",
-                                "#7ea342",
-                                "#7d67d0",
-                                "#c18b41",
-                                "#678dcd",
-                                "#cb5336",
-                                "#b76ea7"))+
-  theme_minimal()
-ggplot(lockdownmobilitydata,aes( x= date, y = averetail))+
-  geom_line(aes(color = RGN19NM),size =1)+
-  scale_color_manual(values = c('#e41a1c',
-    '#377eb8',
-    '#4daf4a',
-    '#984ea3',
-    '#ff7f00',
-    '#ffff33',
-    '#a65628',
-    '#f781bf',
-    '#999999'))+
-  theme_minimal()
+lockdowncoviddata <- lockdowncoviddata%>%
+  dplyr::rename(Region = RGN19NM)
 
-lockdowndata[is.na(lockdowndata)] <- 0
+##plot covid data
+region_list<- list(c('North East','North West','Yorkshire and The Humber'),c('East Midlands','West Midlands','South West'),c('East of England','South East','London'))
+
+for (i in 1:3){
+  gg<- ggplot(lockdowncoviddata[lockdowncoviddata$Region %in% region_list[[i]],],aes( x= date, y = newCases))+
+    geom_line(aes(color = Region),size =0.8)+
+    scale_x_date(breaks =as.Date(c("2020-09-01","2020-10-01","2020-11-01","2020-12-01")),date_labels = "%b")+
+    labs(y = "New Cases")+
+    ylim(0,12000)+
+    geom_vline(xintercept= as.Date('2020-11-05'),linetype=4,color = 'red')+
+    geom_vline(xintercept= as.Date('2020-12-02'),linetype=4,color = 'red')+
+    scale_color_manual(values = c('#e41a1c',
+                                  '#377eb8',
+                                  '#4daf4a'
+                                  ))+
+    theme_bw() +
+    theme(axis.line = element_line(colour = "black"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0),size=18),
+          axis.text = element_text(size=16),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank()) +
+    theme(legend.title = element_blank())+
+    theme(legend.text=element_text(size=16))+
+    theme(legend.position="bottom")
+  regionlist[[i]] = gg
+}
+regionlist[2]
+for (i in 1:3){
+  gg<- ggplot(lockdowncoviddata[lockdowncoviddata$Region %in% region_list[[i]],],aes( x= date, y = cumCases))+
+    geom_line(aes(color = Region),size =1)+
+    scale_x_date(breaks =as.Date(c("2020-09-01","2020-10-01","2020-11-01","2020-12-01")),date_labels = "%b")+
+    labs(y = "Cumulative Cases")+
+    ylim(0,3.7e+05)+
+    geom_vline(xintercept= as.Date('2020-11-05'),linetype=4,color = 'red')+
+    geom_vline(xintercept= as.Date('2020-12-02'),linetype=4,color = 'red')+
+    scale_color_manual(values = c('#e41a1c',
+                                  '#377eb8',
+                                  '#4daf4a'
+    ))+
+    theme_bw() +
+    theme(axis.line = element_line(colour = "black"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0),size=18),
+          axis.text = element_text(size=16),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank()) +
+    theme(legend.title = element_blank())+
+    theme(legend.text=element_text(size=14))+
+    theme(legend.position="bottom")
+  regionlist[[i+3]] = gg
+}
+regionlist[6]
+ggarrange(plotlist = regionlist,ncol=3,nrow=2,labels=c('(a)','(b)','(c)','(d)','(e)','(f)'))%>%
+  ggexport(filename='final_regionlist3.pdf',height =12,width=18)
+
+
+##plot mobility data
+mobilitylist = list()
+
 lockdownmobilitydata <- mobilty_covid%>%
   filter(date >= '2020-09-18'&date<='2020-12-28')%>%
   filter(!areaCode=='E06000017')
-brewer.pal(9, "BrBG")
 lockdownmobilitydata[is.na(lockdownmobilitydata)] <- 0
 lockdownmobilitydata <- lockdownmobilitydata%>%
   group_by(RGN19NM,date)%>%
   summarise(averetail = mean(retail_and_recreation_percent_change_from_baseline),avegrocery=mean(grocery_and_pharmacy_percent_change_from_baseline),avetransit=mean(transit_stations_percent_change_from_baseline),averesid=mean(residential_percent_change_from_baseline),averwork=mean(workplaces_percent_change_from_baseline))
-## plot 4 plots of Sep Oct Nov of each region's covid cases, death cases,new cases. I think different regions have different peaks. For example, London has highest cases in Dec
-##from this plot, we can see the absolute number of regions, while the heatmap can tell us the peak of each region
-## plot the new cases before lockdown, during lockdown and after lockdown by MAP AND frequency plot
 
-##plot the mobility before and after lockdown'
 
-##Third Part: focus on london boroughs, why some areas have far few cases than others(Camden)
+mobilitylist= list()
+
+col_names=colnames(lockdownmobilitydata)
+col_names = col_names[3:7]
+lockdownmobilitydata$date = lockdownmobilitydata$date-7
+mobility_list<- list('retail_recreation','transit_stations','residential','workplaces','grocery_pharmacy')
+for (i in col_names){
+  gg<- ggplot(lockdownmobilitydata,aes_string( x= lockdownmobilitydata$date, y = i))+
+    geom_line(aes(color = RGN19NM),size =1)+
+    scale_x_date(breaks =as.Date(c("2020-09-15","2020-10-15","2020-11-15","2020-12-15")),date_labels = "%b")+
+    geom_vline(xintercept= as.Date('2020-11-05'),linetype=4,color = 'red')+
+    geom_vline(xintercept= as.Date('2020-12-02'),linetype=4,color = 'red')+
+    scale_color_manual(values = c('#e41a1c',
+                                  '#377eb8',
+                                  '#4daf4a',
+                                  '#984ea3',
+                                  '#ff7f00',
+                                  '#ffff33',
+                                  '#a65628',
+                                  '#f781bf',
+                                  '#999999'
+    ))+
+    theme_bw() +
+    theme(axis.line = element_line(colour = "black"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_text(margin = margin(t = 0, r = 15, b = 0, l = 0),size=20),
+          axis.text = element_text(size=16),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank()) +
+    theme(legend.title = element_blank())+
+    theme(legend.text=element_text(size=18))+
+    theme(legend.position="bottom")
+  mobilitylist[[i]] = gg
+}
+mobilitylist[[1]]
+ggarrange(plotlist=mobilitylist,ncol = 2,nrow=3,labels=c('(a)','(b)','(c)','(d)','(e)'),font.label = list(size=20,color='black',face='bold'),legend = c('right'),common.legend = TRUE)%>%
+  ggexport(filename='final_mobilitylist2.pdf',height =20,width=20)
